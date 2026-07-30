@@ -1,0 +1,5 @@
+# CodeGraph 索引（可重新生成）
+.codegraph/
+
+# macOS
+.DS_Store

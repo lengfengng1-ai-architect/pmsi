@@ -3,7 +3,7 @@
 ## Why
 决策管理（docs/05）是 MVP 核心护城河（"推"），spec 已就绪（docs/api/paths/decisions.yaml）。本 change 实现第一个垂直切片，验证脚手架 + 流程门。
 
-## What
+## What Changes
 - Decision / DecisionOption / AuditEvent 模型（docs/15）
 - 决策状态机（draft→pending→decided，docs/07 图4 子集）
 - 端点：`POST /v1/decisions`、`POST /v1/decisions/{id}/submit`、`POST /v1/decisions/{id}/decide`

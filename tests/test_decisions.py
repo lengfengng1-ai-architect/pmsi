@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 DECIDER = uuid.uuid4()
 SUBMITTER = uuid.uuid4()
 PROJECT = uuid.uuid4()
+EVIDENCE = uuid.uuid4()
 
 
 def _headers(user: uuid.UUID, if_match: str | None = None) -> dict:
@@ -27,6 +28,7 @@ def _payload(decider: uuid.UUID = DECIDER) -> dict:
         "decider_user_ref": str(decider),
         "due_at": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
         "impact_level": "med",
+        "impact_evidence_id": str(EVIDENCE),
     }
 
 
@@ -53,6 +55,26 @@ async def test_create_decision__too_few_options__returns_422(client):
     # Arrange
     payload = _payload()
     payload["options"] = [payload["options"][0]]
+    # Act
+    resp = await client.post("/v1/decisions", json=payload, headers=_headers(SUBMITTER))
+    # Assert
+    assert resp.status_code == 422
+
+
+async def test_create_decision__missing_evidence__returns_422(client):
+    # Arrange: AC-X02 首次定级即须证据
+    payload = _payload()
+    del payload["impact_evidence_id"]
+    # Act
+    resp = await client.post("/v1/decisions", json=payload, headers=_headers(SUBMITTER))
+    # Assert
+    assert resp.status_code == 422
+
+
+async def test_create_decision__missing_project_id__returns_422(client):
+    # Arrange: 决策须归属项目（docs/15 §4.3）
+    payload = _payload()
+    del payload["project_id"]
     # Act
     resp = await client.post("/v1/decisions", json=payload, headers=_headers(SUBMITTER))
     # Assert

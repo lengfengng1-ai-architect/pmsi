@@ -200,9 +200,10 @@ components:
         is_chosen: { type: boolean, default: false, readOnly: true, description: 是否被选中（拍板后置 true） }
     DecisionCreate:
       type: object
-      required: [title, background, options, decider_user_ref, due_at, impact_level, impact_evidence_id]
+      required: [project_id, title, background, options, decider_user_ref, due_at, impact_level, impact_evidence_id]
       description: 决策卡创建；服务层守卫见各端点 description
       properties:
+        project_id: { type: string, format: uuid, description: 归属项目（决策须归属项目，docs/15 §4.3） }
         title: { type: string, description: 决策导向标题（A vs B，非纯问题） }
         background: { type: string, description: 背景与待决问题（事实层） }
         options:
@@ -233,6 +234,7 @@ components:
       description: 决策资源（响应）
       properties:
         id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid, description: 归属项目 }
         title: { type: string }
         status: { type: string, enum: [draft, pending, escalating, decided, executed, closed, withdrawn] }
         impact_level: { type: string, enum: [low, med, high] }

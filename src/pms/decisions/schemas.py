@@ -1,7 +1,4 @@
-"""决策 Pydantic schemas（与 docs/api/paths/decisions.yaml 对齐）。
-
-注：DecisionCreate 增 project_id（spec 暂缺，见 openspec change proposal 的 spec gap）。
-"""
+"""决策 Pydantic schemas（与 docs/api/paths/decisions.yaml 对齐）。"""
 
 from datetime import datetime
 from decimal import Decimal
@@ -36,7 +33,7 @@ class DecisionCreate(BaseModel):
     decider_user_ref: UUID
     due_at: datetime
     impact_level: Literal["low", "med", "high"]
-    impact_evidence_id: UUID | None = None  # TODO Evidence 落地后必填(AC-X02)
+    impact_evidence_id: UUID  # AC-X02：首次定级即须证据
     linked_milestone_id: UUID | None = None
 
 

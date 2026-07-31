@@ -1,7 +1,7 @@
 """决策聚合 + 选项（docs/15 §4.3）。
 
-注：project_id / impact_evidence_id / linked_milestone_id 暂为 UUID 引用（无 FK），
-待 Project/Evidence/Milestone 模型落地后补外键。
+注：project_id / impact_evidence_id / linked_milestone_id 为 UUID 引用（无 FK），
+待 Project/Evidence/Milestone 模型落地后补外键与存在性校验。
 """
 
 import uuid
@@ -21,9 +21,7 @@ class Decision(Base, UUIDPk, VersionMixin, TimestampMixin):
     background: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     impact_level: Mapped[str] = mapped_column(String(10))  # low/med/high
-    impact_evidence_id: Mapped[uuid.UUID | None] = mapped_column(
-        nullable=True
-    )  # ref → Evidence（待建）
+    impact_evidence_id: Mapped[uuid.UUID] = mapped_column()  # ref → Evidence（待建）
     decider_user_ref: Mapped[uuid.UUID] = mapped_column()
     submitter_user_ref: Mapped[uuid.UUID] = mapped_column()
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

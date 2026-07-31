@@ -11,9 +11,17 @@ from transitions.core import MachineError
 from pms.shared_kernel.exceptions import IllegalTransitionError
 
 
-def build_machine(model, *, states: list[str], transitions: list, initial: str) -> Machine:
-    """给聚合挂状态机。聚合须有 status 字段作 current state。"""
-    return Machine(model=model, states=states, transitions=transitions, initial=initial)
+def build_machine(
+    model, *, states: list[str], transitions: list, initial: str, model_attribute: str = "status"
+) -> Machine:
+    """给聚合挂状态机。transitions 直接驱动聚合的 status 属性（docs/15 约定）。"""
+    return Machine(
+        model=model,
+        states=states,
+        transitions=transitions,
+        initial=initial,
+        model_attribute=model_attribute,
+    )
 
 
 def safe_trigger(model, trigger: str) -> None:

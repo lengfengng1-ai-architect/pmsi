@@ -40,6 +40,14 @@ class DueAfterMilestoneError(DomainError):
     code = "due_after_milestone"  # 截止晚于阻塞里程碑（AC-DM-12b）
 
 
+class NotDeciderError(DomainError):
+    code = "not_decider"  # 非唯一决策人调用 decide（AC-DM-03）
+
+
+class NotFoundError(DomainError):
+    code = "not_found"  # 资源不存在（→404）
+
+
 class ConflictError(Exception):
     """乐观锁版本冲突（AC-CONCUR-01）→ 409。"""
 

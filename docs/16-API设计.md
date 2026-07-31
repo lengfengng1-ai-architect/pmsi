@@ -142,26 +142,28 @@ flowchart LR
 ```python
 # 决策卡创建（直射 AC-DM-01/01a/01b/02/12b）
 class DecisionOptionIn(BaseModel):
-    seq: int                       # A/B...
+    seq: int  # A/B...
     description: str
     schedule_impact: timedelta | None
     cost_impact: Decimal | None
     scope_impact: str | None
     quality_impact: str | None
-    pros: str | None; cons: str | None
+    pros: str | None
+    cons: str | None
     is_recommended: bool = False
 
+
 class DecisionCreate(BaseModel):
-    title: str                     # 决策导向
+    title: str  # 决策导向
     background: str
-    options: list[DecisionOptionIn]   # >=2, 取向互斥(守卫)
-    decider_user_ref: UUID         # 唯一；达阈值 != submitter
-    due_at: datetime               # >= now 且 <= linked_milestone.due (守卫)
-    impact_level: Literal["low","med","high"]
-    impact_evidence_id: UUID       # 首次定级即须证据 (AC-X02)
+    options: list[DecisionOptionIn]  # >=2, 取向互斥(守卫)
+    decider_user_ref: UUID  # 唯一；达阈值 != submitter
+    due_at: datetime  # >= now 且 <= linked_milestone.due (守卫)
+    impact_level: Literal["low", "med", "high"]
+    impact_evidence_id: UUID  # 首次定级即须证据 (AC-X02)
     linked_milestone_id: UUID | None
     participants: list[UUID] = []  # C
-    informed: list[UUID] = []      # I
+    informed: list[UUID] = []  # I
     # 服务层守卫: options>=2 & 互斥 & decider!=submitter(阈值) & due<=milestone
 ```
 

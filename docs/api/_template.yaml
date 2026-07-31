@@ -1,0 +1,72 @@
+# OpenAPI 3.1 共享组件模板
+# 每个 capability 文件（docs/api/paths/<cap>.yaml）$ref 引用本文件的 components。
+# 约定：每个 property 必须有中文 description；每个端点用 x-in-scope-ref 反向引用 superpowers.yaml 的 in_scope id。
+openapi: "3.1.0"
+info:
+  title: PMS 共享模板（不直接挂载）
+  version: "0.1.0"
+
+components:
+  schemas:
+    APIError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: 错误码（snake_case），如 illegal_transition / self_review / missing_evidence / not_trackable / baseline_required / options_not_distinct / due_after_milestone / conflict / forbidden / out_of_scope / not_found / unauthenticated
+            message:
+              type: string
+              description: 面向人的错误说明（中文）
+            details:
+              type: object
+              additionalProperties: true
+              description: 可选的结构化补充（如冲突的 version、缺失字段）
+    PageMeta:
+      type: object
+      properties:
+        total: { type: integer, description: 总数 }
+        cursor: { type: string, nullable: true, description: 下一页游标 }
+    ETag:
+      type: string
+      description: 聚合版本号（乐观锁，状态变更用 If-Match 头）
+
+  parameters:
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema: { type: string }
+      description: 乐观锁——聚合当前 version；状态迁移端点必传，冲突返回 409
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string }
+      description: 幂等键（创建/审批类），24h 内重复键返回原结果
+
+  responses:
+    Unauthorized:
+      description: 未认证
+      content: { application/json: { schema: { $ref: "#/components/schemas/APIError" } } }
+    Forbidden:
+      description: 无功能权限 / 超数据范围
+      content: { application/json: { schema: { $ref: "#/components/schemas/APIError" } } }
+    NotFound:
+      description: 资源不存在 / 未知租户
+      content: { application/json: { schema: { $ref: "#/components/schemas/APIError" } } }
+    BadRequest:
+      description: 缺必填/格式错误
+      content: { application/json: { schema: { $ref: "#/components/schemas/APIError" } } }
+    Unprocessable:
+      description: 状态机非法迁移 / 禁自审 / 缺证据 / 不可追踪 / 无基线 / 选项不互斥 / 截止晚于里程碑 等领域守卫失败
+      content: { application/json: { schema: { $ref: "#/components/schemas/APIError" } } }
+    Conflict:
+      description: 乐观锁版本冲突（AC-CONCUR-01）
+      content: { application/json: { schema: { $ref: "#/components/schemas/APIError" } } }
+
+# 说明：capability 文件示例见 docs/api/paths/decisions.yaml

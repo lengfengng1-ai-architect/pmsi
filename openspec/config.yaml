@@ -1,20 +1,29 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Tech stack: Python + uv + FastAPI(异步) + SQLAlchemy 2(async, asyncpg) + Alembic + Pydantic v2 + Celery + Redis(beat) + transitions + PostgreSQL(一租户一库)；前端 React + Vite + TS。
+  Domain: SaaS 多租户项目管理系统；固化顶级 PM 的「拆控推追回」+ PMP。
+  Naming: 源码 snake_case；数据模型/组件 PascalCase；API YAML 文件 kebab-case；JSON snake_case；operationId = {resource}_{action}（对应处理函数名）。
+  架构: 模块化单体(DDD 限界上下文)，四层(domain/application/infra/interface)；状态变更聚合带 version(乐观锁)；审计 append-only 同事务。
+  Out of scope (MVP 绝不可实现): 组合层、完整 EVM、决策债可视化、经验库跨项目、完整 CCB、自定义规则引擎、IM/文档/代码/财务集成、全局搜索、原生 App、AI 副驾、Program 层。详见 superpowers.yaml。
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - 必须引用对应 superpowers.yaml 的 in_scope id
+    - 每个 change 对应一个能力，不跨功能
+    - 涉及 out_scope 必须在 Non-goals 列出
+    - 必须说明 seed/fixture 如何覆盖验收场景
+  design:
+    - 接口设计必须声明对应 OpenAPI 文件(docs/api/paths/)
+    - 数据流必须标明真实 PG 还是 seed/fixture
+    - 命名引用必须来自 seed，不可 LLM 编造
+    - 状态变更必须映射到 docs/07 状态机迁移 + 列出守卫(禁自审/证据/乐观锁等)
+  specs:
+    - 每个 spec 对应一个 superpowers.yaml 的 in_scope id
+    - 字段语义由人定义(docs/05/06 AC)，AI 不可修改
+    - 每端点覆盖 200/400/422/500；错误用 _template.yaml 的 APIError
+    - docs/06 的 AC → spec Scenario(WHEN/THEN/SHALL)；枚举英文，注释中文
+  tasks:
+    - 实现顺序固定：OpenAPI YAML → SQLAlchemy 模型(字段与 YAML 一致) → 业务/Service(不感知 HTTP) → Router → seed/fixture → 测试(镜像源码,覆盖成功+错误码,≥80%)
+    - 状态机/守卫必测：合法迁移 + 非法迁移(422) + 禁自审 + 缺证据 + 乐观锁冲突
+    - 状态迁移同事务写 audit_event；改聚合签名后更新 codegraph 索引

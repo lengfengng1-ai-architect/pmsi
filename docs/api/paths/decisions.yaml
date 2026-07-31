@@ -1,0 +1,247 @@
+# 决策管理 capability —— OpenAPI 3.1 spec 示范
+# 映射：docs/05 决策管理 / docs/06 AC-DM-* / docs/16 §5.2 / superpowers.yaml in_scope: decisions
+# 状态机见 docs/07 图4。本文件是编码前置契约，无此 spec 不得编码。
+openapi: "3.1.0"
+info:
+  title: PMS · Decisions API
+  version: "0.1.0"
+  description: |
+    决策卡创建、状态迁移（动作式端点）。
+    所有状态迁移端点须传 If-Match(乐观锁)；迁移合法性 + AC 守卫由服务层校验，失败返回 422。
+
+paths:
+  /v1/decisions:
+    post:
+      tags: [decisions]
+      operationId: decisions_create
+      summary: 创建决策卡
+      x-in-scope-ref: decisions
+      parameters:
+        - { $ref: "../_template.yaml#/components/parameters/IdempotencyKey" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DecisionCreate" }
+      responses:
+        "201":
+          description: 已创建（status=draft）
+          headers: { ETag: { schema: { $ref: "../_template.yaml#/components/schemas/ETag" } } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Decision" } } }
+        "400": { $ref: "../_template.yaml#/components/responses/BadRequest" }
+        "401": { $ref: "../_template.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "../_template.yaml#/components/responses/Forbidden" }
+        "422": { $ref: "../_template.yaml#/components/responses/Unprocessable" }
+    get:
+      tags: [decisions]
+      operationId: decisions_list
+      summary: 决策队列（范围过滤：决策人/状态/逾期/决策债）
+      x-in-scope-ref: decisions
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [draft, pending, escalating, decided, executed, closed, withdrawn] }, description: 按状态过滤 }
+        - { in: query, name: decider_user_ref, schema: { type: string, format: uuid }, description: 按决策人过滤 }
+        - { in: query, name: overdue, schema: { type: boolean }, description: 仅逾期 }
+        - { in: query, name: cursor, schema: { type: string } }
+        - { in: query, name: limit, schema: { type: integer, default: 50 } }
+      responses:
+        "200":
+          description: 列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Decision" } }
+                  meta: { $ref: "../_template.yaml#/components/schemas/PageMeta" }
+        "401": { $ref: "../_template.yaml#/components/responses/Unauthorized" }
+        "403": { $ref: "../_template.yaml#/components/responses/Forbidden" }
+
+  /v1/decisions/{id}:
+    get:
+      tags: [decisions]
+      operationId: decisions_get
+      summary: 决策详情（含选项/留痕/决策债）
+      x-in-scope-ref: decisions
+      parameters:
+        - { $ref: "#/components/parameters/DecisionId" }
+      responses:
+        "200":
+          description: 详情
+          content: { application/json: { schema: { $ref: "#/components/schemas/Decision" } } }
+        "403": { $ref: "../_template.yaml#/components/responses/Forbidden" }
+        "404": { $ref: "../_template.yaml#/components/responses/NotFound" }
+
+  # —— 动作式状态迁移端点 ——
+  /v1/decisions/{id}/submit:
+    post:
+      tags: [decisions]
+      operationId: decisions_submit
+      summary: 提交决策（draft→pending）
+      x-in-scope-ref: decisions
+      parameters:
+        - { $ref: "#/components/parameters/DecisionId" }
+        - { $ref: "../_template.yaml#/components/parameters/IfMatch" }
+      responses:
+        "200": { $ref: "#/components/responses/Transitioned" }
+        "409": { $ref: "../_template.yaml#/components/responses/Conflict" }
+        "422": { $ref: "../_template.yaml#/components/responses/Unprocessable" }
+      description: |
+        守卫：≥2 选项且取向互斥(AC-DM-01a)、唯一决策人(AC-DM-03)、截止≤所阻塞里程碑(AC-DM-12b)；
+        否则 422 options_not_distinct / due_after_milestone。
+  /v1/decisions/{id}/decide:
+    post:
+      tags: [decisions]
+      operationId: decisions_decide
+      summary: 拍板（pending/escalating→decided）
+      x-in-scope-ref: decisions
+      parameters:
+        - { $ref: "#/components/parameters/DecisionId" }
+        - { $ref: "../_template.yaml#/components/parameters/IfMatch" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DecideRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/Transitioned" }
+        "409": { $ref: "../_template.yaml#/components/responses/Conflict" }
+        "422": { $ref: "../_template.yaml#/components/responses/Unprocessable" }
+      description: |
+        守卫：当前用户须为该决策唯一决策人(actor=decider)；记所选 option + rationale。
+        非决策人调用 → 422。
+  /v1/decisions/{id}/fallback:
+    post:
+      tags: [decisions]
+      operationId: decisions_fallback
+      summary: 回退（executed→pending，落地被驳回/取消）
+      x-in-scope-ref: decisions
+      parameters:
+        - { $ref: "#/components/parameters/DecisionId" }
+        - { $ref: "../_template.yaml#/components/parameters/IfMatch" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ReasonRequest" } } }
+      responses:
+        "200": { $ref: "#/components/responses/Transitioned" }
+        "409": { $ref: "../_template.yaml#/components/responses/Conflict" }
+        "422": { $ref: "../_template.yaml#/components/responses/Unprocessable" }
+      description: 守卫：结构化理由；**不重置 debt_started_at 计息时钟**(AC-DM-05a)。
+  /v1/decisions/{id}/close:
+    post:
+      tags: [decisions]
+      operationId: decisions_close
+      summary: 关闭（executed→closed）
+      x-in-scope-ref: decisions
+      parameters:
+        - { $ref: "#/components/parameters/DecisionId" }
+        - { $ref: "../_template.yaml#/components/parameters/IfMatch" }
+      responses:
+        "200": { $ref: "#/components/responses/Transitioned" }
+        "409": { $ref: "../_template.yaml#/components/responses/Conflict" }
+        "422": { $ref: "../_template.yaml#/components/responses/Unprocessable" }
+      description: |
+        守卫：已生成落地动作(达已执行/已关闭、类型一致、回链、N:1 绑定,AC-DM-07a)
+        且**确认人 ≠ 提交人**(AC-DM-07b)，否则 422 self_review / not_trackable。
+  /v1/decisions/{id}/withdraw:
+    post:
+      tags: [decisions]
+      operationId: decisions_withdraw
+      summary: 撤销（*→withdrawn）
+      x-in-scope-ref: decisions
+      parameters:
+        - { $ref: "#/components/parameters/DecisionId" }
+        - { $ref: "../_template.yaml#/components/parameters/IfMatch" }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ReasonRequest" } } }
+      responses:
+        "200": { $ref: "#/components/responses/Transitioned" }
+        "409": { $ref: "../_template.yaml#/components/responses/Conflict" }
+        "422": { $ref: "../_template.yaml#/components/responses/Unprocessable" }
+      description: 守卫：结构化理由；"已实际执行"非合法撤销理由(AC-DM-07c)。
+
+components:
+  parameters:
+    DecisionId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: 决策 ID
+  responses:
+    Transitioned:
+      description: 迁移成功（返回新状态 + ETag）
+      headers: { ETag: { schema: { $ref: "../_template.yaml#/components/schemas/ETag" } } }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              action: { type: string }
+              from: { type: string }
+              to: { type: string }
+              at: { type: string, format: date-time }
+              by: { type: string, format: uuid, description: 执行人 }
+  schemas:
+    DecisionOption:
+      type: object
+      required: [seq, description]
+      description: 决策选项；取向须互斥（schedule/cost/scope/quality_impact 至少一项不同），否则提交被拒
+      properties:
+        seq: { type: integer, description: 选项序（1=A，2=B…） }
+        description: { type: string, description: 选项描述 }
+        schedule_impact: { type: string, nullable: true, description: 对进度的影响（ISO8601 时长或描述） }
+        cost_impact: { type: number, nullable: true, description: 对成本的影响（本位币） }
+        scope_impact: { type: string, nullable: true, description: 对范围的影响 }
+        quality_impact: { type: string, nullable: true, description: 对质量的影响 }
+        pros: { type: string, nullable: true }
+        cons: { type: string, nullable: true }
+        is_recommended: { type: boolean, default: false }
+        is_chosen: { type: boolean, default: false, readOnly: true, description: 是否被选中（拍板后置 true） }
+    DecisionCreate:
+      type: object
+      required: [title, background, options, decider_user_ref, due_at, impact_level, impact_evidence_id]
+      description: 决策卡创建；服务层守卫见各端点 description
+      properties:
+        title: { type: string, description: 决策导向标题（A vs B，非纯问题） }
+        background: { type: string, description: 背景与待决问题（事实层） }
+        options:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/DecisionOption" }
+          description: ≥2 个互斥选项(AC-DM-01a)
+        decider_user_ref: { type: string, format: uuid, description: 唯一决策人；影响达阈值时须 ≠ 提出人(AC-DM-01b) }
+        due_at: { type: string, format: date-time, description: 截止；须 ≥now 且 ≤所阻塞里程碑(AC-DM-12b) }
+        impact_level: { type: string, enum: [low, med, high], description: 影响等级（须挂证据 AC-X02） }
+        impact_evidence_id: { type: string, format: uuid, description: 影响等级的证据 ID（首次定级即须证据） }
+        linked_milestone_id: { type: string, format: uuid, nullable: true, description: 关联里程碑（阻塞关系） }
+        participants: { type: array, items: { type: string, format: uuid }, description: 参与人(C) }
+        informed: { type: array, items: { type: string, format: uuid }, description: 知会人(I) }
+    DecideRequest:
+      type: object
+      required: [chosen_option_seq, rationale]
+      properties:
+        chosen_option_seq: { type: integer, description: 所选选项序 }
+        rationale: { type: string, description: 选择理由（已决记录） }
+    ReasonRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, description: 结构化理由 }
+    Decision:
+      type: object
+      description: 决策资源（响应）
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        status: { type: string, enum: [draft, pending, escalating, decided, executed, closed, withdrawn] }
+        impact_level: { type: string, enum: [low, med, high] }
+        decider_user_ref: { type: string, format: uuid }
+        submitter_user_ref: { type: string, format: uuid }
+        due_at: { type: string, format: date-time }
+        linked_milestone_id: { type: string, format: uuid, nullable: true }
+        debt_started_at: { type: string, format: date-time, nullable: true, description: 计息时钟起点（回退/改期不重置） }
+        decided_at: { type: string, format: date-time, nullable: true }
+        options: { type: array, items: { $ref: "#/components/schemas/DecisionOption" } }
+        version: { type: integer, description: 乐观锁版本（=ETag） }
+        created_at: { type: string, format: date-time }

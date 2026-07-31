@@ -26,13 +26,51 @@
 | 0 | 回复开头声明「已检查流程技能、判断哪些适用、将调用哪个」 | 触发判断 |
 | 1 | **brainstorming**：探索意图与设计，输出 design 草稿 | Superpowers · 未调用即设计/编码=违规 |
 | 2 | **grilling**（可选）：拷问已有计划 | Superpowers · 模糊→1，具体→2 |
-| 3 | **/opsx:explore**：澄清、消除歧义、细化方案（不写应用代码） | OpenSpec/opsx |
+| 3 | **/opsx:explore**：澄清、消除歧义、细化方案（不写应用代码；标准 opsx 四步的第一步） | OpenSpec/opsx |
 | 4 | **范围审查 YAGNI 三问**：必须建？能用现有能力？能一行/一个配置解决？ | — |
 | 5 | **查 codegraph**：改前查符号/调用链/blast radius，避免重复/冲突/改坏调用方 | `codegraph explore` 或 MCP |
 | 6 | **读能力边界**：确认在 `superpowers.yaml` 的 `in_scope`；`out_scope` 或不在两栏→提示不做 | superpowers.yaml |
-| 7 | **确认 Spec 已存在**：有对应 OpenAPI YAML→按 spec 实现；没有→**不编码**，提示先写 spec | docs/api/paths/*.yaml |
-| 8 | **变更流程**：`/opsx:propose`→`apply`→`sync`→`archive`；关键语义/规则/架构等人确认才写码 | OpenSpec/opsx |
+| 7 | **确认 Spec 已存在且字段齐全**：有对应 OpenAPI YAML→按 spec 实现；没有 / 缺字段→**不编码**，停下问人（见下「Spec gap 处理」） | docs/api/paths/*.yaml |
+| 8 | **变更流程**：`/opsx:propose`→`status`→人确认→`apply`→`validate`→`archive`→commit（详见下表）；关键语义/规则/架构等人确认才写码 | OpenSpec/opsx |
 | 9 | **编码前强制勾选**：图谱✓ 能力范围✓ Spec/YAML✓ 活跃 change✓，缺一不码（显式列出） | — |
+
+### Step 8 变更流程细则
+
+**标准 opsx 流程是四步**：`explore（可选）→ propose → apply → archive`。其中 explore 就是本表 Step 3，propose/apply/archive 展开如下。带 ★ 的是**本项目自定义闸口，非 opsx 行为**，不可省。
+
+| 子步 | 命令/动作 | 要点 |
+|---|---|---|
+| 8a | `/opsx:propose <name>` | 建 change 目录 + 生成全部 artifacts |
+| 8b | `openspec status --change <name>` | 确认 `Progress: N/N artifacts complete` 再往下 |
+| 8c | ★ **人确认** | 关键语义/业务规则/架构决策等人点头才进 8d（§1 的「人 Review」闸口） |
+| 8d | `/opsx:apply` | 按 tasks 顺序实现；**每完成一条立即回写 `[x]`**，不许攒到最后 |
+| 8e | `openspec validate <name> --type change` | 必须全绿才进 8f（用 `--all` 会混入无关主 spec 的报错） |
+| 8f | `/opsx:archive` | **一步到位：同步主 spec + 移入 `changes/archive/<日期>-<名字>/`** |
+| 8g | ★ commit | 实现 + 勾选 + 归档**一次性提交**，一个 change 一个 commit（OpenSpec 不管 git，此为项目约定） |
+
+**artifact 依赖**（`propose` 按此顺序生成，`apply` 要求 tasks 完成）：
+
+```
+proposal ─┬─→ specs  ─┬─→ tasks → apply
+          └─→ design ─┘
+```
+
+`specs` 与 `design` 均只依赖 proposal、彼此无序，先写哪个都合法。
+
+**archive 就是同步主线，没有后续步骤。** 不要先跑 `/opsx:sync` 再 archive——archive 内含 sync，先 sync 会让 archive 撞 "already exists"，只能靠 `--skip-specs` 绕（该 flag 本意是给纯工具/文档类无 spec 变更用的）。`/opsx:sync` 是**旁路**：它更新主 spec 但**change 仍保持 active**，仅用于「change 未做完、需让主 spec 提前反映部分变更」。做完了直接 archive。
+
+**artifact 生成规则见 `openspec/config.yaml`** 的 `rules` 段（proposal/design/specs/tasks 四类各有约束，如「实现顺序固定：OpenAPI YAML → 模型 → Service → Router → seed → 测试」「每个 change 对应一个能力，不跨功能」）。走 `/opsx:*` 技能时 `openspec instructions` 会自动加载；**手写 artifact 时必须先读它**，否则这批规则静默失效。
+
+**delta spec 格式**（不合规则 `openspec validate` 报错）：
+- scenario 用 `#### Scenario:` **恰好四个井号**独立块——三个井号或行内 `- **Scenario:` 会**静默失效**
+- 每个 requirement 至少一个 scenario；正文须含 SHALL/MUST（避免 should/may）
+- MODIFIED requirement 须**整块复制**原文（`### Requirement:` 到最后一个 scenario）再改，标题须逐字一致；只写部分内容会在 archive 时丢细节。只是新增关注点而不改既有行为时，用 ADDED 而非 MODIFIED
+- REMOVED 须带 `**Reason**` 与 `**Migration**`；RENAMED 用 `FROM:`/`TO:` 格式
+- proposal 须有 `## Why` 和 `## What Changes` 两个标题，且 `## Capabilities` 段列出的每个 capability 都要有对应 spec 文件
+
+### Spec gap 处理（实现需要某字段但 OpenAPI 里没有）
+
+**停下来问人，spec 补完再编码。** 不许「实现里先加 + 注释挂账 + 事后补 change」——那会让 spec 与代码长期不一致且容易遗忘。字段语义属人的决策范围（§4）。
 
 **例外**：用户明确要跳过某步时，AI 须先提醒风险、要求用户明确说「确认跳过 [步骤名]」才执行；相关 skill 不可用时**暂停报告**，不得未确认就继续。
 

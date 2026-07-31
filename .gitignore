@@ -4,3 +4,18 @@
 # macOS
 .DS_Store
 .idea/
+
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# 本地配置（含真实凭据）
+.env
